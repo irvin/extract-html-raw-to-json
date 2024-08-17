@@ -2,11 +2,20 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 
+var totalWriteFiles = 0;
+
+// 從命令列參數取得目錄路徑
+const dir = process.argv[2]; // 第三個參數是目錄路徑
+
+if (!dir) {
+  console.error('請提供目錄路徑作為命令列參數');
+  process.exit(1);
+}
 
 // 讀取 HTML 文件
 
-function parseFileSavetoJson(fileName) {
-console.log('read file', fileName);
+function parseFileSavetoJson(fileName, index, total) {
+console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
 const htmlContent = fs.readFileSync(fileName, 'utf8');
 const $ = cheerio.load(htmlContent);
@@ -57,7 +66,8 @@ fs.writeFile(fileSave, jsonString, (err) => {
   if (err) {
     console.error('Error writing file', err);
   } else {
-    console.log('Successfully wrote file', fileSave);
+    totalWriteFiles += 1;
+    console.log(`(${totalWriteFiles}/${total}) Successfully wrote: ${fileSave}`);
   }
 });
 }
@@ -78,10 +88,10 @@ function getHtmlFiles(dir, fileList = []) {
 }
 
 (function() {
-  const dir = 'test_path/'; // 替換成實際的目錄路徑
   const htmlFiles = getHtmlFiles(dir);
+  const totalFiles = htmlFiles.length;
   console.log('htmlFiles', htmlFiles);
-  htmlFiles.forEach(filePath => {
-    parseFileSavetoJson(filePath);
+  htmlFiles.forEach((filePath, index) => {
+    parseFileSavetoJson(filePath, index, totalFiles);
   });
 })();
