@@ -5,10 +5,11 @@ const path = require('path');
 const batchSize = 20; // 每批處理的檔案數量
 
 // 從命令列參數取得目錄路徑
-const dir = process.argv[2]; // 第三個參數是目錄路徑
+const dir = process.argv[2]; // 第三個參數是來源目錄路徑
+const destDir = process.argv[3]; // 第四個參數是目標目錄路徑
 
-if (!dir) {
-  console.error('請提供目錄路徑作為命令列參數');
+if (!dir || !destDir) {
+  console.error('請提供來源目錄和目標目錄作為命令列參數');
   process.exit(1);
 }
 
@@ -61,9 +62,15 @@ async function parseFileSavetoJson(fileName, index, total) {
 
   const jsonString = JSON.stringify(res, null, 2);
 
-  var fileSave = fileName.replace('html', 'json');
-  await fs.writeFile(fileSave, jsonString);
-  console.log(`(${index + 1}/${total}) Successfully wrote: ${fileSave}`);
+  // 計算目標檔案路徑
+  const relativePath = path.relative(dir, fileName);
+  const jsonFilePath = path.join(destDir, relativePath).replace('.html', '.json');
+
+  // 確保目標目錄存在
+  await fs.mkdir(path.dirname(jsonFilePath), { recursive: true });
+
+  await fs.writeFile(jsonFilePath, jsonString);
+  console.log(`(${index + 1}/${total}) Successfully wrote: ${jsonFilePath}`);
   } catch (err) {
     console.error(`Error processing file ${fileName}`, err);
   }
