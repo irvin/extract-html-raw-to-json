@@ -1,22 +1,21 @@
 const cheerio = require('cheerio');
 const fs = require('fs');
+const path = require('path');
+
 
 // 讀取 HTML 文件
-const htmlContent = fs.readFileSync('index.html', 'utf8');
+
+function parseFileSavetoJson(fileName) {
+console.log('read file', fileName);
+
+const htmlContent = fs.readFileSync(fileName, 'utf8');
 const $ = cheerio.load(htmlContent);
-
-// 提取 <title> 標籤的內容
-// const title = $('title').text();
-// console.log(title);
-
-// 提取 <meta name="description"> 標籤的內容
-// const metaDescription = $('meta[name="description"]').attr('content');
-// console.log(metaDescription);
 
 // 提取 <script type="application/ld+json"> 標籤的內容
 const jsonLdScript = $('script[type="application/ld+json"]').html();
 const jsonLdData = JSON.parse(jsonLdScript);
-// console.log(jsonLdData);
+
+if (!jsonLdData) return;
 
 let res = {
   '@id': jsonLdData.mainEntityOfPage['@id'],
@@ -43,7 +42,7 @@ function extractRawHtmlContent(rawHtml) {
   return contents;
 }
 
-// clean html tag in raw content
+// 清除 raw content 中的 html tag
 function removeHtmlTags(array) {
   const htmlTagRegex = /<[^>]*>/g;
   return array.map(item => item.replace(htmlTagRegex, ''));
@@ -51,14 +50,38 @@ function removeHtmlTags(array) {
 
 res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
 
-console.log(res);
-
 const jsonString = JSON.stringify(res, null, 2);
 
-fs.writeFile('index.json', jsonString, (err) => {
+var fileSave = fileName.replace('html', 'json');
+fs.writeFile(fileSave, jsonString, (err) => {
   if (err) {
     console.error('Error writing file', err);
   } else {
-    console.log('Successfully wrote file');
+    console.log('Successfully wrote file', fileSave);
   }
 });
+}
+
+// 遍歷目錄列出所有 .html 檔案
+function getHtmlFiles(dir, fileList = []) {
+  const files = fs.readdirSync(dir);
+  files.forEach(file => {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      getHtmlFiles(filePath, fileList);
+    } else if (path.extname(file) === '.html') {
+      fileList.push(filePath);
+    }
+  });
+  return fileList;
+}
+
+(function() {
+  const dir = 'test_path/'; // 替換成實際的目錄路徑
+  const htmlFiles = getHtmlFiles(dir);
+  console.log('htmlFiles', htmlFiles);
+  htmlFiles.forEach(filePath => {
+    parseFileSavetoJson(filePath);
+  });
+})();
