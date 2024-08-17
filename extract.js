@@ -12,64 +12,63 @@ if (!dir) {
   process.exit(1);
 }
 
-// 讀取 HTML 文件
-
+// 讀取 HTML 文件，提取 JSON-LD 資料，存成 JSON 檔案
 function parseFileSavetoJson(fileName, index, total) {
-console.log(`(${index + 1}/${total}) read file: ${fileName}`);
+  console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
-const htmlContent = fs.readFileSync(fileName, 'utf8');
-const $ = cheerio.load(htmlContent);
+  const htmlContent = fs.readFileSync(fileName, 'utf8');
+  const $ = cheerio.load(htmlContent);
 
-// 提取 <script type="application/ld+json"> 標籤的內容
-const jsonLdScript = $('script[type="application/ld+json"]').html();
-const jsonLdData = JSON.parse(jsonLdScript);
+  // 提取 <script type="application/ld+json"> 標籤的內容
+  const jsonLdScript = $('script[type="application/ld+json"]').html();
+  const jsonLdData = JSON.parse(jsonLdScript);
 
-if (!jsonLdData) return;
+  if (!jsonLdData) return;
 
-let res = {
-  '@id': jsonLdData.mainEntityOfPage['@id'],
-  articleSection: jsonLdData.articleSection,
-  description: jsonLdData.description.trim(),
-  dateModified: jsonLdData.dateModified,
-  datePublished: jsonLdData.datePublished,
-  headline: jsonLdData.headline,
-  keywords: jsonLdData.keywords
-}
+  let res = {
+    '@id': jsonLdData.mainEntityOfPage['@id'],
+    articleSection: jsonLdData.articleSection,
+    description: jsonLdData.description.trim(),
+    dateModified: jsonLdData.dateModified,
+    datePublished: jsonLdData.datePublished,
+    headline: jsonLdData.headline,
+    keywords: jsonLdData.keywords
+  }
 
-// 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
-let fuMetadata = $('script[id="fusion-metadata"]').html();
+  // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
+  let fuMetadata = $('script[id="fusion-metadata"]').html();
 
-function extractRawHtmlContent(rawHtml) {
-  const rawHtmlRegex = /"type"\s*:\s*"raw_html"[^}]*"content"\s*:\s*"([^"]*)"/g;
-  let matches;
-  const contents = [];
+  function extractRawHtmlContent(rawHtml) {
+    const rawHtmlRegex = /"type"\s*:\s*"raw_html"[^}]*"content"\s*:\s*"([^"]*)"/g;
+    let matches;
+    const contents = [];
 
-  while ((matches = rawHtmlRegex.exec(rawHtml)) !== null) {
+    while ((matches = rawHtmlRegex.exec(rawHtml)) !== null) {
       contents.push(matches[1]);
+    }
+
+    return contents;
   }
 
-  return contents;
-}
-
-// 清除 raw content 中的 html tag
-function removeHtmlTags(array) {
-  const htmlTagRegex = /<[^>]*>/g;
-  return array.map(item => item.replace(htmlTagRegex, ''));
-}
-
-res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
-
-const jsonString = JSON.stringify(res, null, 2);
-
-var fileSave = fileName.replace('html', 'json');
-fs.writeFile(fileSave, jsonString, (err) => {
-  if (err) {
-    console.error('Error writing file', err);
-  } else {
-    totalWriteFiles += 1;
-    console.log(`(${totalWriteFiles}/${total}) Successfully wrote: ${fileSave}`);
+  // 清除 raw content 中的 html tag
+  function removeHtmlTags(array) {
+    const htmlTagRegex = /<[^>]*>/g;
+    return array.map(item => item.replace(htmlTagRegex, ''));
   }
-});
+
+  res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
+
+  const jsonString = JSON.stringify(res, null, 2);
+
+  var fileSave = fileName.replace('html', 'json');
+  fs.writeFile(fileSave, jsonString, (err) => {
+    if (err) {
+      console.error('Error writing file', err);
+    } else {
+      totalWriteFiles += 1;
+      console.log(`(${totalWriteFiles}/${total}) Successfully wrote: ${fileSave}`);
+    }
+  });
 }
 
 // 遍歷目錄列出所有 .html 檔案
@@ -90,7 +89,7 @@ function getHtmlFiles(dir, fileList = []) {
 (function() {
   const htmlFiles = getHtmlFiles(dir);
   const totalFiles = htmlFiles.length;
-  console.log('htmlFiles', htmlFiles);
+  // console.log('htmlFiles', htmlFiles);
   htmlFiles.forEach((filePath, index) => {
     parseFileSavetoJson(filePath, index, totalFiles);
   });
