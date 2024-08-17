@@ -52,3 +52,13 @@ function removeHtmlTags(array) {
 res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
 
 console.log(res);
+
+const jsonString = JSON.stringify(res, null, 2);
+
+fs.writeFile('index.json', jsonString, (err) => {
+  if (err) {
+    console.error('Error writing file', err);
+  } else {
+    console.log('Successfully wrote file');
+  }
+});
