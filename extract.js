@@ -2,6 +2,8 @@ const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
 
+const batchSize = 20; // 每批處理的檔案數量
+
 // 從命令列參數取得目錄路徑
 const dir = process.argv[2]; // 第三個參數是目錄路徑
 
@@ -32,7 +34,7 @@ async function parseFileSavetoJson(fileName, index, total) {
     datePublished: jsonLdData.datePublished,
     headline: jsonLdData.headline,
     keywords: jsonLdData.keywords
-  }
+  };
 
   // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
   let fuMetadata = $('script[id="fusion-metadata"]').html();
@@ -62,7 +64,6 @@ async function parseFileSavetoJson(fileName, index, total) {
   var fileSave = fileName.replace('html', 'json');
   await fs.writeFile(fileSave, jsonString);
   console.log(`(${index + 1}/${total}) Successfully wrote: ${fileSave}`);
-
   } catch (err) {
     console.error(`Error processing file ${fileName}`, err);
   }
@@ -83,12 +84,19 @@ async function getHtmlFiles(dir, fileList = []) {
   return fileList;
 }
 
+// 將檔案分批處理
+async function processFilesInBatches(files, batchSize) {
+  const totalFiles = files.length;
+  for (let i = 0; i < totalFiles; i += batchSize) {
+    const batch = files.slice(i, i + batchSize);
+    await Promise.all(batch.map((filePath, index) => parseFileSavetoJson(filePath, i + index, totalFiles)));
+  }
+}
+
 (async function() {
   try {
     const htmlFiles = await getHtmlFiles(dir);
-    const totalFiles = htmlFiles.length;
-    // console.log('htmlFiles', htmlFiles);
-    await Promise.all(htmlFiles.map((filePath, index) => parseFileSavetoJson(filePath, index, totalFiles)));
+    await processFilesInBatches(htmlFiles, batchSize);
   } catch (err) {
     console.error('Error processing directory', err);
   }
