@@ -1,8 +1,6 @@
 const cheerio = require('cheerio');
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
-
-var totalWriteFiles = 0;
 
 // 從命令列參數取得目錄路徑
 const dir = process.argv[2]; // 第三個參數是目錄路徑
@@ -13,10 +11,11 @@ if (!dir) {
 }
 
 // 讀取 HTML 文件，提取 JSON-LD 資料，存成 JSON 檔案
-function parseFileSavetoJson(fileName, index, total) {
+async function parseFileSavetoJson(fileName, index, total) {
   console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
-  const htmlContent = fs.readFileSync(fileName, 'utf8');
+  try {
+  const htmlContent = await fs.readFile(fileName, 'utf8');
   const $ = cheerio.load(htmlContent);
 
   // 提取 <script type="application/ld+json"> 標籤的內容
@@ -61,36 +60,36 @@ function parseFileSavetoJson(fileName, index, total) {
   const jsonString = JSON.stringify(res, null, 2);
 
   var fileSave = fileName.replace('html', 'json');
-  fs.writeFile(fileSave, jsonString, (err) => {
-    if (err) {
-      console.error('Error writing file', err);
-    } else {
-      totalWriteFiles += 1;
-      console.log(`(${totalWriteFiles}/${total}) Successfully wrote: ${fileSave}`);
-    }
-  });
+  await fs.writeFile(fileSave, jsonString);
+  console.log(`(${index + 1}/${total}) Successfully wrote: ${fileSave}`);
+
+  } catch (err) {
+    console.error(`Error processing file ${fileName}`, err);
+  }
 }
 
 // 遍歷目錄列出所有 .html 檔案
-function getHtmlFiles(dir, fileList = []) {
-  const files = fs.readdirSync(dir);
-  files.forEach(file => {
+async function getHtmlFiles(dir, fileList = []) {
+  const files = await fs.readdir(dir);
+  for (const file of files) {
     const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
+    const stat = await fs.stat(filePath);
     if (stat.isDirectory()) {
-      getHtmlFiles(filePath, fileList);
+      await getHtmlFiles(filePath, fileList);
     } else if (path.extname(file) === '.html') {
       fileList.push(filePath);
     }
-  });
+  }
   return fileList;
 }
 
-(function() {
-  const htmlFiles = getHtmlFiles(dir);
-  const totalFiles = htmlFiles.length;
-  // console.log('htmlFiles', htmlFiles);
-  htmlFiles.forEach((filePath, index) => {
-    parseFileSavetoJson(filePath, index, totalFiles);
-  });
+(async function() {
+  try {
+    const htmlFiles = await getHtmlFiles(dir);
+    const totalFiles = htmlFiles.length;
+    // console.log('htmlFiles', htmlFiles);
+    await Promise.all(htmlFiles.map((filePath, index) => parseFileSavetoJson(filePath, index, totalFiles)));
+  } catch (err) {
+    console.error('Error processing directory', err);
+  }
 })();
