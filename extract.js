@@ -2,7 +2,7 @@ const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
 
-const batchSize = 20; // 每批處理的檔案數量
+const batchSize = 10; // 每批處理的檔案數量
 
 // 從命令列參數取得目錄路徑
 const dir = process.argv[2]; // 第三個參數是來源目錄路徑
