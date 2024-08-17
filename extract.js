@@ -55,7 +55,12 @@ async function parseFileSavetoJson(fileName, index, total) {
   // 清除 raw content 中的 html tag
   function removeHtmlTags(array) {
     const htmlTagRegex = /<[^>]*>/g;
-    return array.map(item => item.replace(htmlTagRegex, ''));
+    array = array.map(item => item.replace(htmlTagRegex, ''));
+
+    // remove last item if is "<div style=\\"
+    if (array[array.length - 1] === '<div style=\\') { array.pop(); }
+
+    return array;
   }
 
   res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
