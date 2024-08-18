@@ -13,11 +13,38 @@ if (!dir || !destDir) {
   process.exit(1);
 }
 
+function extractRawHtmlContent(rawHtml) {
+  const rawHtmlRegex = /"content"\s*:\s*"([^"]*)"\s*,\s*"type"\s*:\s*"raw_html"| "type"\s*:\s*"raw_html"\s*,\s*"content"\s*:\s*"([^"]*)"/g;
+  let matches;
+  const contents = [];
+
+  while ((matches = rawHtmlRegex.exec(rawHtml)) !== null) {
+    contents.push(matches[1] || matches[2]);
+  }
+
+  return contents;
+}
+
+// 清除 raw content 中的 html tag
+function removeHtmlTags(array) {
+  const htmlTagRegex = /<[^>]*>/g;
+  array = array.map(item => item.replace(htmlTagRegex, ''));
+
+  // remove last item if is "<div style=\\"
+  if (array[array.length - 1] === '<div style=\\') { array.pop(); }
+
+  return array;
+}
+
 // 讀取 HTML 文件，提取 JSON-LD 資料，存成 JSON 檔案
 async function parseFileSavetoJson(fileName, index, total) {
   console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
   try {
+  let res = {};
+
+  console.log(res, res.length);
+
   const htmlContent = await fs.readFile(fileName, 'utf8');
   const $ = cheerio.load(htmlContent);
 
@@ -25,45 +52,31 @@ async function parseFileSavetoJson(fileName, index, total) {
   const jsonLdScript = $('script[type="application/ld+json"]').html();
   const jsonLdData = JSON.parse(jsonLdScript);
 
-  if (!jsonLdData) return;
-
-  let res = {
-    '@id': jsonLdData.mainEntityOfPage['@id'],
-    articleSection: jsonLdData.articleSection,
-    description: jsonLdData.description.trim(),
-    dateModified: jsonLdData.dateModified,
-    datePublished: jsonLdData.datePublished,
-    headline: jsonLdData.headline,
-    keywords: jsonLdData.keywords
-  };
+  if (jsonLdData) {
+    res = {
+      ...res,
+      '@id': jsonLdData.mainEntityOfPage['@id'],
+      articleSection: jsonLdData.articleSection,
+      description: jsonLdData.description.trim(),
+      dateModified: jsonLdData.dateModified,
+      datePublished: jsonLdData.datePublished,
+      headline: jsonLdData.headline,
+      keywords: jsonLdData.keywords
+    };
+  }
 
   // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
   let fuMetadata = $('script[id="fusion-metadata"]').html();
 
-  function extractRawHtmlContent(rawHtml) {
-    const rawHtmlRegex = /"type"\s*:\s*"raw_html"[^}]*"content"\s*:\s*"([^"]*)"/g;
-    let matches;
-    const contents = [];
+  // console.log('fuMetadata', fuMetadata);
 
-    while ((matches = rawHtmlRegex.exec(rawHtml)) !== null) {
-      contents.push(matches[1]);
-    }
-
-    return contents;
+  if (fuMetadata) {
+    res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
   }
 
-  // 清除 raw content 中的 html tag
-  function removeHtmlTags(array) {
-    const htmlTagRegex = /<[^>]*>/g;
-    array = array.map(item => item.replace(htmlTagRegex, ''));
+  console.log(res, res.length);
 
-    // remove last item if is "<div style=\\"
-    if (array[array.length - 1] === '<div style=\\') { array.pop(); }
-
-    return array;
-  }
-
-  res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
+  if (!res.length) return;
 
   const jsonString = JSON.stringify(res, null, 2);
 
