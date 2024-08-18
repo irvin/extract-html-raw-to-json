@@ -41,55 +41,55 @@ async function parseFileSavetoJson(fileName, index, total) {
   console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
   try {
-  let res = {};
+    let res = {};
 
-  const htmlContent = await fs.readFile(fileName, 'utf8');
-  const $ = cheerio.load(htmlContent);
+    const htmlContent = await fs.readFile(fileName, 'utf8');
+    const $ = cheerio.load(htmlContent);
 
-  // 提取 <script type="application/ld+json"> 標籤的內容
-  const jsonLdScript = $('script[type="application/ld+json"]').html();
-  const jsonLdData = JSON.parse(jsonLdScript);
+    // 提取 <script type="application/ld+json"> 標籤的內容
+    const jsonLdScript = $('script[type="application/ld+json"]').html();
+    const jsonLdData = JSON.parse(jsonLdScript);
 
-  if (jsonLdData) {
-    res = {
-      ...res,
-      '@id': jsonLdData.mainEntityOfPage['@id'],
-      articleSection: jsonLdData.articleSection,
-      description: jsonLdData.description.trim(),
-      dateModified: jsonLdData.dateModified,
-      datePublished: jsonLdData.datePublished,
-      headline: jsonLdData.headline,
-      keywords: jsonLdData.keywords
-    };
-  }
+    if (jsonLdData) {
+      res = {
+        ...res,
+        '@id': jsonLdData.mainEntityOfPage['@id'],
+        articleSection: jsonLdData.articleSection,
+        description: jsonLdData.description.trim(),
+        dateModified: jsonLdData.dateModified,
+        datePublished: jsonLdData.datePublished,
+        headline: jsonLdData.headline,
+        keywords: jsonLdData.keywords
+      };
+    }
 
-  // generate id from file path
-  if (!res['@id']) res['@id'] = `${fileName.replace('folder/', '').replace('index.html', '')}`;
+    // generate id from file path
+    if (!res['@id']) res['@id'] = `${fileName.replace('folder/', '').replace('index.html', '')}`;
 
-  // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
-  let fuMetadata = $('script[id="fusion-metadata"]').html();
+    // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
+    let fuMetadata = $('script[id="fusion-metadata"]').html();
 
-  // console.log('fuMetadata', fuMetadata);
+    // console.log('fuMetadata', fuMetadata);
 
-  if (fuMetadata) {
-    res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
-  }
+    if (fuMetadata) {
+      res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
+    }
 
-  // console.log(res, res.length, Object.keys(res).length > 1);
+    // console.log(res, res.length, Object.keys(res).length > 1);
 
-  if (!(Object.keys(res).length > 1)) return;
+    if (!(Object.keys(res).length > 1)) return;
 
-  const jsonString = JSON.stringify(res, null, 2);
+    const jsonString = JSON.stringify(res, null, 2);
 
-  // 計算目標檔案路徑
-  const relativePath = path.relative(dir, fileName);
-  const jsonFilePath = path.join(destDir, relativePath).replace('.html', '.json');
+    // 計算目標檔案路徑
+    const relativePath = path.relative(dir, fileName);
+    const jsonFilePath = path.join(destDir, relativePath).replace('.html', '.json');
 
-  // 確保目標目錄存在
-  await fs.mkdir(path.dirname(jsonFilePath), { recursive: true });
+    // 確保目標目錄存在
+    await fs.mkdir(path.dirname(jsonFilePath), { recursive: true });
 
-  await fs.writeFile(jsonFilePath, jsonString);
-  console.log(`(${index + 1}/${total}) Successfully wrote: ${jsonFilePath}`);
+    await fs.writeFile(jsonFilePath, jsonString);
+    console.log(`(${index + 1}/${total}) Successfully wrote: ${jsonFilePath}`);
   } catch (err) {
     console.error(`Error processing file ${fileName}`, err);
   }
