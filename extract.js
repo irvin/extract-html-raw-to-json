@@ -16,6 +16,7 @@ if (!dir || !destDir) {
 function extractRawHtmlContent(rawHtml) {
   const objectRegex = /{[^{}]*}/g;
   let matches;
+  let authorObj = null;
   const contents = [];
 
   while ((matches = objectRegex.exec(rawHtml)) !== null) {
@@ -23,9 +24,16 @@ function extractRawHtmlContent(rawHtml) {
 
     try {
       const obj = JSON.parse(matches[0]);
+      // console.log('obj', obj, obj.role)
+
       if (obj.type === 'raw_html' && obj.content) {
         contents.push(obj.content);
       }
+
+      if (obj.role === 'Columnist') {
+        authorObj = obj;
+      }
+
     }
     catch (err) {
     //   console.error('Error parsing JSON object', err, matches[0]);
@@ -33,7 +41,7 @@ function extractRawHtmlContent(rawHtml) {
   }
 
   // console.log('contents', contents);
-  return contents;
+  return [contents, authorObj];
 }
 
 // 清除 raw content 中的 html tag
@@ -43,7 +51,9 @@ function removeHtmlTags(array) {
 
   // remove last item if is "<div style=\\"
   // if (array[array.length - 1] === '<div style=\\') { array.pop(); }
-  if (array[array.length - 1] === '即起免費看《蘋果新聞網》　歡迎分享在APP內訂閱　看新聞無廣告　按此了解更多') { array.pop(); }
+
+  // check whole array and pop non-wanted items
+  array = array.filter(item => !item.includes('在APP內訂閱'));
 
   return array;
 }
@@ -84,7 +94,9 @@ async function parseFileSavetoJson(fileName, index, total) {
     // console.log('fuMetadata', fuMetadata);
 
     if (fuMetadata) {
-      res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
+      var [rawContents, authorObj] = extractRawHtmlContent(fuMetadata);
+      res.raw_content = removeHtmlTags(rawContents);
+      if (authorObj) res.author = authorObj;
     }
 
     // console.log(res, res.length, Object.keys(res).length > 1);
