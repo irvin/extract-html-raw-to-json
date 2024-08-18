@@ -43,8 +43,6 @@ async function parseFileSavetoJson(fileName, index, total) {
   try {
   let res = {};
 
-  console.log(res, res.length);
-
   const htmlContent = await fs.readFile(fileName, 'utf8');
   const $ = cheerio.load(htmlContent);
 
@@ -65,6 +63,9 @@ async function parseFileSavetoJson(fileName, index, total) {
     };
   }
 
+  // generate id from file path
+  if (!res['@id']) res['@id'] = `${fileName.replace('folder/', '').replace('index.html', '')}`;
+
   // 提取 <script id="fusion-metadata" type="application/javascript"> 標籤的內容
   let fuMetadata = $('script[id="fusion-metadata"]').html();
 
@@ -74,9 +75,9 @@ async function parseFileSavetoJson(fileName, index, total) {
     res.raw_content = removeHtmlTags(extractRawHtmlContent(fuMetadata));
   }
 
-  console.log(res, res.length);
+  // console.log(res, res.length, Object.keys(res).length > 1);
 
-  if (!res.length) return;
+  if (!(Object.keys(res).length > 1)) return;
 
   const jsonString = JSON.stringify(res, null, 2);
 
