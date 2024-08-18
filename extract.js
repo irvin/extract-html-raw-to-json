@@ -14,14 +14,25 @@ if (!dir || !destDir) {
 }
 
 function extractRawHtmlContent(rawHtml) {
-  const rawHtmlRegex = /"content"\s*:\s*"([^"]*)"\s*,\s*"type"\s*:\s*"raw_html"| "type"\s*:\s*"raw_html"\s*,\s*"content"\s*:\s*"([^"]*)"/g;
+  const objectRegex = /{[^{}]*}/g;
   let matches;
   const contents = [];
 
-  while ((matches = rawHtmlRegex.exec(rawHtml)) !== null) {
-    contents.push(matches[1] || matches[2]);
+  while ((matches = objectRegex.exec(rawHtml)) !== null) {
+    // console.log('matches', matches[0], obj);
+
+    try {
+      const obj = JSON.parse(matches[0]);
+      if (obj.type === 'raw_html' && obj.content) {
+        contents.push(obj.content);
+      }        
+    }
+    catch (err) {
+    //   console.error('Error parsing JSON object', err, matches[0]);
+    }
   }
 
+  // console.log('contents', contents);
   return contents;
 }
 
