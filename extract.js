@@ -1,6 +1,7 @@
 const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
+const vm = require('vm');
 
 const batchSize = 10; // 每批處理的檔案數量
 
@@ -14,33 +15,51 @@ if (!dir || !destDir) {
 }
 
 function extractRawHtmlContent(rawHtml) {
-  const objectRegex = /{[^{}]*}/g;
+  // const objectRegex = /{[^{}]*}/g;
   let matches;
   let authorObj = null;
-  const contents = [];
+  let contents = [];
+  // matches = rawHtml.match(objectRegex);
 
-  while ((matches = objectRegex.exec(rawHtml)) !== null) {
-    // console.log('matches', matches[0], obj);
+  const obj = vm.runInNewContext('var window = {}; var Fusion = window.Fision = {};' + rawHtml + ';Fusion;');
+  // console.log('obj.globalContent', obj.globalContent);
 
+  obj.globalContent.forEach(item => {
+    console.log('item', item);
+    debugger;
+
+    // if (item.type === 'raw_html') {
+    //   contents.push(item.content);
+    // }
+  });
+
+
+  if (matches) matches.forEach(match => {
     try {
-      const obj = JSON.parse(matches[0]);
-      // console.log('obj', obj, obj.role)
-
-      if (obj.type === 'raw_html' && obj.content) {
-        contents.push(obj.content);
-      }
+      const obj = JSON.parse(match);
+      console.log(obj, match);
 
       if (obj.role === 'Columnist') {
         authorObj = obj;
       }
 
+      if (obj.content) {
+        console.log('obj', obj, obj.role)
+
+        if ((obj.type === 'raw_html') || (obj.type === 'text')) {
+          contents.push(obj.content);
+        }
+  
+        // if ((obj.comments == []) && (obj.inline_comments == [])) {
+        //   contents.push(obj.content);
+        // }  
+      }
     }
     catch (err) {
     //   console.error('Error parsing JSON object', err, matches[0]);
     }
-  }
+  });
 
-  // console.log('contents', contents);
   return [contents, authorObj];
 }
 
