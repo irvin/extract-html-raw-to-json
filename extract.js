@@ -39,10 +39,10 @@ function extractRawHtmlContent(rawHtml) {
 // 清除 raw content 中的 html tag
 function removeHtmlTags(array) {
   const htmlTagRegex = /<[^>]*>/g;
-  array = array.map(item => item.replace(htmlTagRegex, ''));
+  const trailingRRegex = /\r$/g;
 
-  // remove last item if is "<div style=\\"
-  // if (array[array.length - 1] === '<div style=\\') { array.pop(); }
+  array = array.map(item => item.replace(htmlTagRegex, ''));
+  array = array.map(item => item.replace(trailingRRegex, ''));
 
   // check whole array and pop non-wanted items
   array = array.filter(item => !item.includes('在APP內訂閱'));
