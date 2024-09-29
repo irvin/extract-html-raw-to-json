@@ -15,50 +15,23 @@ if (!dir || !destDir) {
 }
 
 function extractRawHtmlContent(rawHtml) {
-  // const objectRegex = /{[^{}]*}/g;
-  let matches;
   let authorObj = null;
   let contents = [];
-  // matches = rawHtml.match(objectRegex);
 
   const obj = vm.runInNewContext('var window = {}; var Fusion = window.Fision = {};' + rawHtml + ';Fusion;');
-  // console.log('obj.globalContent', obj.globalContent);
 
-  obj.globalContent.forEach(item => {
-    console.log('item', item);
-    debugger;
+  if ((!obj) || (!obj.globalContent) || (!obj.globalContent.content_elements)) return [null, null];
 
-    // if (item.type === 'raw_html') {
-    //   contents.push(item.content);
-    // }
+  // console.log('obj.globalContent', obj.globalContent, typeof obj.globalContent);
+
+  obj.globalContent.content_elements.forEach(item => {
+    if (item && item.content && item.type === 'raw_html')
+      contents.push(item.content);
+
+    if (item && item.content && item.type === 'text')
+      contents.push(item.content);
   });
-
-
-  if (matches) matches.forEach(match => {
-    try {
-      const obj = JSON.parse(match);
-      console.log(obj, match);
-
-      if (obj.role === 'Columnist') {
-        authorObj = obj;
-      }
-
-      if (obj.content) {
-        console.log('obj', obj, obj.role)
-
-        if ((obj.type === 'raw_html') || (obj.type === 'text')) {
-          contents.push(obj.content);
-        }
-  
-        // if ((obj.comments == []) && (obj.inline_comments == [])) {
-        //   contents.push(obj.content);
-        // }  
-      }
-    }
-    catch (err) {
-    //   console.error('Error parsing JSON object', err, matches[0]);
-    }
-  });
+  // console.log('contents', contents);
 
   return [contents, authorObj];
 }
@@ -114,7 +87,7 @@ async function parseFileSavetoJson(fileName, index, total) {
 
     if (fuMetadata) {
       var [rawContents, authorObj] = extractRawHtmlContent(fuMetadata);
-      res.raw_content = removeHtmlTags(rawContents);
+      if (rawContents) res.raw_content = removeHtmlTags(rawContents);
       if (authorObj) res.author = authorObj;
     }
 
