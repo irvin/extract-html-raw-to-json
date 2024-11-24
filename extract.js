@@ -2,17 +2,106 @@ const cheerio = require('cheerio');
 const fs = require('fs').promises;
 const path = require('path');
 const vm = require('vm');
+const os = require('os');
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 const batchSize = 10; // 每批處理的檔案數量
+let numCPUs = os.cpus().length; // 獲取 CPU 核心數
+
+// Worker 線程的邏輯
+if (!isMainThread) {
+  const { filePath, index, total, sourceDir, destinationDir } = workerData;
+  
+  async function processFile() {
+    try {
+      const result = await parseFileSavetoJson(filePath, index, total, sourceDir, destinationDir);
+      parentPort.postMessage({ success: true, filePath });
+    } catch (error) {
+      parentPort.postMessage({ success: false, filePath, error: error.message });
+    }
+  }
+
+  processFile();
+  return;
+}
+
+// 主線程的邏輯
 
 // 從命令列參數取得目錄路徑
 const dir = process.argv[2]; // 第三個參數是來源目錄路徑
 const destDir = process.argv[3]; // 第四個參數是目標目錄路徑
+numCPUs = process.argv[4] || numCPUs; // 使用 CPU 核心數
 
 if (!dir || !destDir) {
   console.error('請提供來源目錄和目標目錄作為命令列參數');
   process.exit(1);
 }
+
+// 建立 Worker Pool
+function createWorkerPool(files) {
+  const workers = new Set();
+  let fileIndex = 0;
+  const totalFiles = files.length;
+
+  return new Promise((resolve, reject) => {
+    const startWorker = () => {
+      if (fileIndex >= files.length) {
+        if (workers.size === 0) resolve();
+        return;
+      }
+
+      const worker = new Worker(__filename, {
+        workerData: {
+          filePath: files[fileIndex],
+          index: fileIndex,
+          total: totalFiles,
+          sourceDir: dir,
+          destinationDir: destDir
+        }
+      });
+
+      workers.add(worker);
+      fileIndex++;
+
+      worker.on('message', (message) => {
+        if (message.success) {
+          console.log(`Successfully processed: ${message.filePath}`);
+        } else {
+          console.error(`Error processing ${message.filePath}: ${message.error}`);
+        }
+        workers.delete(worker);
+        startWorker();
+      });
+
+      worker.on('error', reject);
+      worker.on('exit', (code) => {
+        if (code !== 0) {
+          reject(new Error(`Worker stopped with exit code ${code}`));
+        }
+        workers.delete(worker);
+        startWorker();
+      });
+    };
+
+    // 啟動初始的 worker 數量
+    for (let i = 0; i < Math.min(numCPUs, files.length); i++) {
+      startWorker();
+    }
+  });
+}
+
+// 主程序執行邏輯
+(async function() {
+  try {
+    console.log(`使用 ${numCPUs} 個 CPU 核心進行處理`);
+    const htmlFiles = await getHtmlFiles(dir);
+    await createWorkerPool(htmlFiles);
+    console.log('所有檔案處理完成');
+  } catch (err) {
+    console.error('Error processing directory', err);
+  }
+})();
+
 
 function extractRawHtmlContent(rawHtml) {
   let authorObj = null;
@@ -51,7 +140,7 @@ function removeHtmlTags(array) {
 }
 
 // 讀取 HTML 文件，提取 JSON-LD 資料，存成 JSON 檔案
-async function parseFileSavetoJson(fileName, index, total) {
+async function parseFileSavetoJson(fileName, index, total, sourceDir, destinationDir) {
   console.log(`(${index + 1}/${total}) read file: ${fileName}`);
 
   try {
@@ -98,8 +187,8 @@ async function parseFileSavetoJson(fileName, index, total) {
     const jsonString = JSON.stringify(res, null, 2);
 
     // 計算目標檔案路徑
-    const relativePath = path.relative(dir, fileName);
-    const jsonFilePath = path.join(destDir, relativePath).replace('.html', '.json');
+    const relativePath = path.relative(sourceDir, fileName);
+    const jsonFilePath = path.join(destinationDir, relativePath).replace('.html', '.json');
 
     // 確保目標目錄存在
     await fs.mkdir(path.dirname(jsonFilePath), { recursive: true });
@@ -108,6 +197,7 @@ async function parseFileSavetoJson(fileName, index, total) {
     console.log(`(${index + 1}/${total}) Successfully wrote: ${jsonFilePath}`);
   } catch (err) {
     console.error(`Error processing file ${fileName}`, err);
+    throw err; // 重新拋出錯誤以便 worker 可以捕獲
   }
 }
 
@@ -125,21 +215,3 @@ async function getHtmlFiles(dir, fileList = []) {
   }
   return fileList;
 }
-
-// 將檔案分批處理
-async function processFilesInBatches(files, batchSize) {
-  const totalFiles = files.length;
-  for (let i = 0; i < totalFiles; i += batchSize) {
-    const batch = files.slice(i, i + batchSize);
-    await Promise.all(batch.map((filePath, index) => parseFileSavetoJson(filePath, i + index, totalFiles)));
-  }
-}
-
-(async function() {
-  try {
-    const htmlFiles = await getHtmlFiles(dir);
-    await processFilesInBatches(htmlFiles, batchSize);
-  } catch (err) {
-    console.error('Error processing directory', err);
-  }
-})();
