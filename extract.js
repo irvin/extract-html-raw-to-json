@@ -67,10 +67,16 @@ function createWorkerPool(files) {
           console.error(`Error processing ${message.filePath}: ${message.error}`);
         }
         workers.delete(worker);
+        worker.terminate();
         startWorker();
       });
 
-      worker.on('error', reject);
+      worker.on('error', (error) => {
+        workers.delete(worker);
+        worker.terminate();
+        reject(error);
+      });
+
       worker.on('exit', (code) => {
         if (code !== 0) {
           reject(new Error(`Worker stopped with exit code ${code}`));
