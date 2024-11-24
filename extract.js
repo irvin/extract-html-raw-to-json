@@ -15,6 +15,8 @@ if (!isMainThread) {
       parentPort.postMessage({ success: true, filePath });
     } catch (error) {
       parentPort.postMessage({ success: false, filePath, error: error.message });
+    } finally {
+      process.exit(0); // 確保 Worker 在完成工作後終止
     }
   }
 
@@ -39,11 +41,26 @@ function createWorkerPool(files) {
   const workers = new Set();
   let fileIndex = 0;
   const totalFiles = files.length;
+  let completedTasks = 0;
 
   return new Promise((resolve, reject) => {
+    const cleanupWorker = (worker) => {
+      workers.delete(worker);
+      worker.unref(); // 解除引用
+      worker.terminate()  // 強制終止
+        .catch(console.error);
+    };
+
     const startWorker = () => {
       if (fileIndex >= files.length) {
-        if (workers.size === 0) resolve();
+        // 檢查是否所有任務都完成
+        if (completedTasks === files.length) {
+          // 清理所有剩餘的 workers
+          for (const worker of workers) {
+            cleanupWorker(worker);
+          }
+          resolve();
+        }
         return;
       }
 
@@ -61,33 +78,42 @@ function createWorkerPool(files) {
       fileIndex++;
 
       worker.on('message', (message) => {
+        completedTasks++;
         if (message.success) {
           console.log(`Successfully processed: ${message.filePath}`);
         } else {
           console.error(`Error processing ${message.filePath}: ${message.error}`);
         }
-        workers.delete(worker);
-        worker.terminate();
-        startWorker();
+        
+        cleanupWorker(worker);
+        
+        // 只有在還有檔案需要處理時才啟動新的 worker
+        if (fileIndex < files.length) {
+          startWorker();
+        }
       });
 
-      worker.on('error', (error) => {
-        workers.delete(worker);
-        worker.terminate();
-        reject(error);
+      worker.on('error', (err) => {
+        cleanupWorker(worker);
+        reject(err);
       });
 
       worker.on('exit', (code) => {
         if (code !== 0) {
           reject(new Error(`Worker stopped with exit code ${code}`));
         }
-        workers.delete(worker);
-        startWorker();
+        cleanupWorker(worker);
+        
+        // 檢查是否所有任務都完成
+        if (completedTasks === files.length) {
+          resolve();
+        }
       });
     };
 
     // 啟動初始的 worker 數量
-    for (let i = 0; i < Math.min(numCPUs, files.length); i++) {
+    const initialWorkers = Math.min(numCPUs, files.length);
+    for (let i = 0; i < initialWorkers; i++) {
       startWorker();
     }
   });
