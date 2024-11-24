@@ -5,9 +5,6 @@ const vm = require('vm');
 const os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
-const batchSize = 10; // 每批處理的檔案數量
-let numCPUs = os.cpus().length; // 獲取 CPU 核心數
-
 // Worker 線程的邏輯
 if (!isMainThread) {
   const { filePath, index, total, sourceDir, destinationDir } = workerData;
@@ -30,7 +27,7 @@ if (!isMainThread) {
 // 從命令列參數取得目錄路徑
 const dir = process.argv[2]; // 第三個參數是來源目錄路徑
 const destDir = process.argv[3]; // 第四個參數是目標目錄路徑
-numCPUs = process.argv[4] || numCPUs; // 使用 CPU 核心數
+const numCPUs = process.argv[4] || os.cpus().length; // 使用 CPU 核心數
 
 if (!dir || !destDir) {
   console.error('請提供來源目錄和目標目錄作為命令列參數');
@@ -127,15 +124,11 @@ function extractRawHtmlContent(rawHtml) {
 
 // 清除 raw content 中的 html tag
 function removeHtmlTags(array) {
-  const htmlTagRegex = /<[^>]*>/g;
-  const trailingRRegex = /\r$/g;
-
-  array = array.map(item => item.replace(htmlTagRegex, ''));
-  array = array.map(item => item.replace(trailingRRegex, ''));
+  array = array.map(item => item.replace(/<[^>]*>/g, ''));  // htmlTag
+  array = array.map(item => item.replace(/\r$/g, ''));   // trailingR
 
   // check whole array and pop non-wanted items
   array = array.filter(item => !item.includes('在APP內訂閱'));
-
   return array;
 }
 
@@ -202,16 +195,9 @@ async function parseFileSavetoJson(fileName, index, total, sourceDir, destinatio
 }
 
 // 遍歷目錄列出所有 .html 檔案
-async function getHtmlFiles(dir, fileList = []) {
-  const files = await fs.readdir(dir);
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = await fs.stat(filePath);
-    if (stat.isDirectory()) {
-      await getHtmlFiles(filePath, fileList);
-    } else if (path.extname(file) === '.html') {
-      fileList.push(filePath);
-    }
-  }
-  return fileList;
+async function getHtmlFiles(dir) {
+  const files = await fs.readdir(dir, { recursive: true });
+  return files
+    .map(file => path.join(dir, file))
+    .filter(file => path.extname(file) === '.html');
 }
