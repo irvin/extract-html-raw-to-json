@@ -12,6 +12,11 @@ if (!isMainThread) {
       const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       const id = content['@id'];
       
+      // 清理 raw_content 陣列中的空字串
+      if (content.raw_content && Array.isArray(content.raw_content)) {
+        content.raw_content = content.raw_content.filter(item => item.trim() !== '');
+      }
+      
       const match = id.match(/appledaily\.com\/([^\/]+)\/(\d{8})\/([^\/]+?)(?:\/index\.html)?(?:\/)?$/);
       if (!match) return null;
       
