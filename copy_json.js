@@ -18,13 +18,18 @@ if (!isMainThread) {
       const [, category, date, hash] = match;
       const newId = `https://tw.appledaily.com/${category}/${date}/${hash}/`;
       
-      // 回傳結果給主線程
+      // 檢查目標檔案是否已存在
+      const targetDir = path.join(targetBaseDir, category, date, hash);
+      const targetFile = path.join(targetDir, 'index.json');
+      const fileExists = fs.existsSync(targetFile);
+      
       return {
         newId,
         category,
         date,
         hash,
-        content
+        content,
+        fileExists
       };
     } catch (err) {
       throw new Error(`處理檔案 ${filePath} 時發生錯誤: ${err.message}`);
@@ -95,10 +100,11 @@ async function createWorkerPool(files, targetBaseDir, numCPUs) {
         completedTasks++;
         
         if (success && result) {
-          if (processedIds.has(result.newId)) {
+          if (processedIds.has(result.newId) || result.fileExists) {
             duplicateFiles.push({
               originalPath: files[index],
-              duplicateId: result.newId
+              duplicateId: result.newId,
+              reason: result.fileExists ? '目標檔案已存在' : '重複的 ID'
             });
           } else {
             processedIds.add(result.newId);
@@ -173,9 +179,10 @@ async function main() {
 
   if (duplicateFiles.length > 0) {
     console.log('\n=== 重複的檔案 ===');
-    duplicateFiles.forEach(({ originalPath, duplicateId }) => {
+    duplicateFiles.forEach(({ originalPath, duplicateId, reason }) => {
       console.log(`檔案路徑: ${originalPath}`);
       console.log(`重複的 ID: ${duplicateId}`);
+      console.log(`原因: ${reason}`);
       console.log('---');
     });
   }
