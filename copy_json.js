@@ -44,7 +44,10 @@ if (!isMainThread) {
 async function createWorkerPool(files, targetBaseDir, numCPUs) {
   const processedIds = new Set();
   const duplicateFiles = [];
+  const errorFiles = [];
   let completedTasks = 0;
+  let successfulCopies = 0;
+  const startTime = Date.now();
   
   return new Promise((resolve, reject) => {
     const workers = new Set();
@@ -53,15 +56,25 @@ async function createWorkerPool(files, targetBaseDir, numCPUs) {
 
     const updateProgress = () => {
       const percentage = ((completedTasks / totalFiles) * 100).toFixed(2);
-      process.stdout.write(`處理進度: ${completedTasks}/${totalFiles} (${percentage}%)\r`);
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      process.stdout.write(
+        `\r[${elapsedTime}s] 處理進度: ${completedTasks}/${totalFiles} (${percentage}%) ` +
+        `| 成功: ${successfulCopies} | 重複: ${duplicateFiles.length} | 錯誤: ${errorFiles.length}`
+      );
     };
 
-    // ... 其餘 Worker Pool 邏輯與 extract.js 類似 ...
     const startWorker = () => {
       if (fileIndex >= files.length) {
         if (completedTasks === files.length) {
-          console.log('\n處理完成！');
-          resolve({ processedIds, duplicateFiles });
+          const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log('\n\n=== 統計資訊 ===');
+          console.log(`總執行時間: ${totalTime} 秒`);
+          console.log(`總檔案數: ${totalFiles}`);
+          console.log(`成功複製: ${successfulCopies}`);
+          console.log(`重複檔案: ${duplicateFiles.length}`);
+          console.log(`處理失敗: ${errorFiles.length}`);
+          console.log(`平均處理速度: ${(totalFiles / totalTime).toFixed(1)} 檔案/秒`);
+          resolve({ processedIds, duplicateFiles, errorFiles });
         }
         return;
       }
@@ -78,7 +91,7 @@ async function createWorkerPool(files, targetBaseDir, numCPUs) {
       workers.add(worker);
       fileIndex++;
 
-      worker.on('message', ({ success, result, index }) => {
+      worker.on('message', ({ success, result, error, index }) => {
         completedTasks++;
         
         if (success && result) {
@@ -97,7 +110,13 @@ async function createWorkerPool(files, targetBaseDir, numCPUs) {
               path.join(targetDir, 'index.json'),
               JSON.stringify(result.content, null, 2)
             );
+            successfulCopies++;
           }
+        } else if (!success) {
+          errorFiles.push({
+            path: files[index],
+            error: error
+          });
         }
 
         updateProgress();
@@ -109,7 +128,15 @@ async function createWorkerPool(files, targetBaseDir, numCPUs) {
         }
       });
 
-      // ... worker 錯誤處理邏輯 ...
+      worker.on('error', (err) => {
+        errorFiles.push({
+          path: files[fileIndex - 1],
+          error: err.message
+        });
+        worker.terminate();
+        workers.delete(worker);
+        startWorker();
+      });
     };
 
     // 啟動初始的 worker 數量
@@ -132,19 +159,33 @@ async function main() {
   const targetDir = process.argv[3];
   const numCPUs = parseInt(process.argv[4]) || os.cpus().length;
 
-  console.log(`開始處理：從 ${sourceDir} 到 ${targetDir}`);
-  console.log(`使用 ${numCPUs} 個 CPU 核心進行處理`);
+  console.log('=== 開始處理 ===');
+  console.log(`來源目錄: ${sourceDir}`);
+  console.log(`目標目錄: ${targetDir}`);
+  console.log(`CPU 核心數: ${numCPUs}`);
+  console.log('===============\n');
 
   const files = [];
   walkDir(sourceDir, files);
+  console.log(`找到 ${files.length} 個 JSON 檔案\n`);
   
-  const { duplicateFiles } = await createWorkerPool(files, targetDir, numCPUs);
+  const { duplicateFiles, errorFiles } = await createWorkerPool(files, targetDir, numCPUs);
 
   if (duplicateFiles.length > 0) {
-    console.log('\n發現重複的檔案:');
+    console.log('\n=== 重複的檔案 ===');
     duplicateFiles.forEach(({ originalPath, duplicateId }) => {
       console.log(`檔案路徑: ${originalPath}`);
-      console.log(`重複的 ID: ${duplicateId}\n`);
+      console.log(`重複的 ID: ${duplicateId}`);
+      console.log('---');
+    });
+  }
+
+  if (errorFiles.length > 0) {
+    console.log('\n=== 處理失敗的檔案 ===');
+    errorFiles.forEach(({ path, error }) => {
+      console.log(`檔案路徑: ${path}`);
+      console.log(`錯誤訊息: ${error}`);
+      console.log('---');
     });
   }
 }
