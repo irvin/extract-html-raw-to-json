@@ -1,97 +1,145 @@
+const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
-// 用來儲存已處理過的 ID，避免重複
-const processedIds = new Set();
-// 用來記錄重複的檔案
-const duplicateFiles = [];
-
-// 遍歷目錄的函數
-function walkDir(dir, targetBaseDir) {
-  const files = fs.readdirSync(dir);
+// Worker 線程的邏輯
+if (!isMainThread) {
+  const { filePath, targetBaseDir, index, total } = workerData;
   
-  files.forEach(file => {
-    const fullPath = path.join(dir, file);
-    const stat = fs.statSync(fullPath);
-    
-    if (stat.isDirectory()) {
-      walkDir(fullPath, targetBaseDir);
-    } else if (file.endsWith('.json')) {
-      processJsonFile(fullPath, targetBaseDir);
+  function processJsonFile(filePath, targetBaseDir) {
+    try {
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const id = content['@id'];
+      
+      const match = id.match(/appledaily\.com\/([^\/]+)\/(\d{8})\/([^\/]+?)(?:\/index\.html)?(?:\/)?$/);
+      if (!match) return null;
+      
+      const [, category, date, hash] = match;
+      const newId = `https://tw.appledaily.com/${category}/${date}/${hash}/`;
+      
+      // 回傳結果給主線程
+      return {
+        newId,
+        category,
+        date,
+        hash,
+        content
+      };
+    } catch (err) {
+      throw new Error(`處理檔案 ${filePath} 時發生錯誤: ${err.message}`);
+    }
+  }
+
+  try {
+    const result = processJsonFile(filePath, targetBaseDir);
+    parentPort.postMessage({ success: true, result, index });
+  } catch (error) {
+    parentPort.postMessage({ success: false, error: error.message, index });
+  }
+  return;
+}
+
+// 主線程的邏輯
+async function createWorkerPool(files, targetBaseDir, numCPUs) {
+  const processedIds = new Set();
+  const duplicateFiles = [];
+  let completedTasks = 0;
+  
+  return new Promise((resolve, reject) => {
+    const workers = new Set();
+    let fileIndex = 0;
+    const totalFiles = files.length;
+
+    const updateProgress = () => {
+      const percentage = ((completedTasks / totalFiles) * 100).toFixed(2);
+      process.stdout.write(`處理進度: ${completedTasks}/${totalFiles} (${percentage}%)\r`);
+    };
+
+    // ... 其餘 Worker Pool 邏輯與 extract.js 類似 ...
+    const startWorker = () => {
+      if (fileIndex >= files.length) {
+        if (completedTasks === files.length) {
+          console.log('\n處理完成！');
+          resolve({ processedIds, duplicateFiles });
+        }
+        return;
+      }
+
+      const worker = new Worker(__filename, {
+        workerData: {
+          filePath: files[fileIndex],
+          targetBaseDir,
+          index: fileIndex,
+          total: totalFiles
+        }
+      });
+
+      workers.add(worker);
+      fileIndex++;
+
+      worker.on('message', ({ success, result, index }) => {
+        completedTasks++;
+        
+        if (success && result) {
+          if (processedIds.has(result.newId)) {
+            duplicateFiles.push({
+              originalPath: files[index],
+              duplicateId: result.newId
+            });
+          } else {
+            processedIds.add(result.newId);
+            const targetDir = path.join(targetBaseDir, result.category, result.date, result.hash);
+            fs.mkdirSync(targetDir, { recursive: true });
+            
+            result.content['@id'] = result.newId;
+            fs.writeFileSync(
+              path.join(targetDir, 'index.json'),
+              JSON.stringify(result.content, null, 2)
+            );
+          }
+        }
+
+        updateProgress();
+        worker.terminate();
+        workers.delete(worker);
+        
+        if (fileIndex < files.length) {
+          startWorker();
+        }
+      });
+
+      // ... worker 錯誤處理邏輯 ...
+    };
+
+    // 啟動初始的 worker 數量
+    const initialWorkers = Math.min(numCPUs, files.length);
+    for (let i = 0; i < initialWorkers; i++) {
+      startWorker();
     }
   });
 }
 
-// 處理單一 JSON 檔案
-function processJsonFile(filePath, targetBaseDir) {
-  try {
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    const id = content['@id'];
-    
-    // 解析 URL
-    const match = id.match(/appledaily\.com\/([^\/]+)\/(\d{8})\/([^\/]+?)(?:\/index\.html)?(?:\/)?$/);
-    if (!match) return;
-    
-    const [, category, date, hash] = match;
-    
-    // 檢查是否重複
-    const newId = `https://tw.appledaily.com/${category}/${date}/${hash}/`;
-    if (processedIds.has(newId)) {
-      duplicateFiles.push({
-        originalPath: filePath,
-        duplicateId: newId
-      });
-      return;
-    }
-    
-    // 記錄已處理的 ID
-    processedIds.add(newId);
-    
-    // 建立目標目錄
-    const targetDir = path.join(targetBaseDir, category, date, hash);
-    fs.mkdirSync(targetDir, { recursive: true });
-    
-    // 更新 @id
-    content['@id'] = newId;
-    
-    // 寫入新檔案
-    fs.writeFileSync(
-      path.join(targetDir, 'index.json'),
-      JSON.stringify(content, null, 2)
-    );
-    
-  } catch (err) {
-    console.error(`處理檔案 ${filePath} 時發生錯誤:`, err);
-  }
-}
-
 // 主程式
-function main() {
+async function main() {
   // 檢查命令列參數
-  if (process.argv.length !== 4) {
-    console.log('使用方式: node process_json.js <來源目錄> <目標目錄>');
+  if (process.argv.length !== 5) {
+    console.log('使用方式: node process_json.js <來源目錄> <目標目錄> <CPU 核心數>');
     process.exit(1);
   }
 
   const sourceDir = process.argv[2];
   const targetDir = process.argv[3];
+  const numCPUs = parseInt(process.argv[4]) || os.cpus().length;
 
-  // 檢查來源目錄是否存在
-  if (!fs.existsSync(sourceDir)) {
-    console.error(`錯誤：來源目錄 "${sourceDir}" 不存在`);
-    process.exit(1);
-  }
-
-  // 建立目標根目錄
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir);
-  }
-  
-  // 開始處理
   console.log(`開始處理：從 ${sourceDir} 到 ${targetDir}`);
-  walkDir(sourceDir, targetDir);
+  console.log(`使用 ${numCPUs} 個 CPU 核心進行處理`);
+
+  const files = [];
+  walkDir(sourceDir, files);
   
-  // 輸出重複檔案報告
+  const { duplicateFiles } = await createWorkerPool(files, targetDir, numCPUs);
+
   if (duplicateFiles.length > 0) {
     console.log('\n發現重複的檔案:');
     duplicateFiles.forEach(({ originalPath, duplicateId }) => {
@@ -99,8 +147,22 @@ function main() {
       console.log(`重複的 ID: ${duplicateId}\n`);
     });
   }
-
-  console.log('處理完成！');
 }
 
-main(); 
+// 修改 walkDir 函數來收集檔案路徑
+function walkDir(dir, files) {
+  const items = fs.readdirSync(dir);
+  
+  items.forEach(item => {
+    const fullPath = path.join(dir, item);
+    const stat = fs.statSync(fullPath);
+    
+    if (stat.isDirectory()) {
+      walkDir(fullPath, files);
+    } else if (item.endsWith('.json')) {
+      files.push(fullPath);
+    }
+  });
+}
+
+main().catch(console.error); 
