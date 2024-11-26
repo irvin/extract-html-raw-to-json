@@ -182,23 +182,35 @@ async function main() {
   
   const { duplicateFiles, errorFiles } = await createWorkerPool(files, targetDir, numCPUs);
 
+  // 將報告寫入 log.txt
+  const logContent = [];
+  
   if (duplicateFiles.length > 0) {
-    console.log('\n=== 重複的檔案 ===');
+    logContent.push('=== 重複的檔案 ===');
     duplicateFiles.forEach(({ originalPath, duplicateId, reason }) => {
-      console.log(`檔案路徑: ${originalPath}`);
-      console.log(`重複的 ID: ${duplicateId}`);
-      console.log(`原因: ${reason}`);
-      console.log('---');
+      logContent.push(`檔案路徑: ${originalPath}`);
+      logContent.push(`重複的 ID: ${duplicateId}`);
+      logContent.push(`原因: ${reason}`);
+      logContent.push('---');
     });
   }
 
   if (errorFiles.length > 0) {
-    console.log('\n=== 處理失敗的檔案 ===');
+    logContent.push('\n=== 處理失敗的檔案 ===');
     errorFiles.forEach(({ path, error }) => {
-      console.log(`檔案路徑: ${path}`);
-      console.log(`錯誤訊息: ${error}`);
-      console.log('---');
+      logContent.push(`檔案路徑: ${path}`);
+      logContent.push(`錯誤訊息: ${error}`);
+      logContent.push('---');
     });
+  }
+
+  // 如果有任何記錄，就寫入檔案
+  if (logContent.length > 0) {
+    fs.writeFileSync(
+      path.join(process.cwd(), 'log.txt'), 
+      logContent.join('\n'), 
+      'utf8'
+    );
   }
 }
 
